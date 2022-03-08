@@ -1,0 +1,54 @@
+import Text.ParserCombinators.Parsec
+
+type Symb = String 
+
+infixl 2 :@
+
+data Expr = Var Symb
+          | Expr :@ Expr
+          | Lam Symb Expr
+              deriving Eq
+
+
+instance Show Expr where
+  show (Var x) = x
+  show (Lam x xs) = "\\" ++ x ++ " -> " ++ show xs
+  show (Var x :@ Var y) = x ++ " " ++ y
+  show (Var x :@ ex) = x ++ " (" ++ show ex ++ ")"
+  show (l :@ r) = "(" ++ show l ++ ") (" ++ show r ++ ")"
+
+instance Read Expr where
+  readsPrec _ str = case runParser parseExpr () "" str of
+    Right x -> [(x,"")]
+    Left _ -> undefined
+
+parseExpr :: Parser Expr
+parseExpr = do
+    ex <- sepEndBy1 (parseBrackets <|> parseLambda <|> parseVar) spaces
+    return $ foldl1 (:@) ex
+
+parseBrackets :: Parser Expr
+parseBrackets = do
+    spaces
+    char '('
+    ex  <- parseExpr
+    char ')'
+    spaces
+    return ex     
+
+parseLambda :: Parser Expr
+parseLambda = do
+    char '\\'
+    vars <- sepEndBy1 parsSymb spaces
+    string "->"
+    spaces
+    ex  <- parseExpr
+    return $ foldr Lam ex vars    
+
+parseVar :: Parser Expr
+parseVar = fmap Var parsSymb     
+  
+parsSymb :: Parser String
+parsSymb = do
+  spaces 
+  fmap (:) (letter <|> char '_') <*> many (alphaNum <|> char '_')

@@ -1,0 +1,54 @@
+import Data.List
+import Data.Maybe
+type Symb = String 
+infixl 2 :@
+infix 1 `alphaEq`
+
+data Expr = Var Symb
+          | Expr :@ Expr
+          | Lam Symb Expr
+          deriving (Eq, Read, Show)
+
+freeVars :: Expr -> [Symb]
+freeVars (Var x) = [x]
+freeVars (e1 :@ e2) = union (freeVars e1) (freeVars e2) 
+freeVars (Lam s e) = delete s (freeVars e)
+
+subst :: Symb -> Expr -> Expr -> Expr 
+subst v n (Var s) | s == v = n
+                  | otherwise = Var s
+subst v n (e1 :@ e2) = (subst v n e1) :@ (subst v n e2)
+subst v n (Lam s e) | s == v = Lam s e
+                    | (find (==s) (freeVars n)) == Nothing  = Lam s (subst v n e)
+                    | otherwise = subst v n (Lam (s ++ "'") (subst s (Var (s ++ "'")) e))
+
+
+alphaEq :: Expr -> Expr -> Bool
+alphaEq (Var x) (Var y) = compare x y == EQ
+alphaEq (e1 :@ e2) (e3 :@ e4) = alphaEq e1 e3 && alphaEq e2 e4
+alphaEq (Lam x e1) (Lam y e2) | x == y = alphaEq e1 e2
+                              | otherwise = alphaEq (Lam x e1) (Lam x (subst y (Var x) e2)) && alphaEq (Lam y e2) (Lam y (subst x (Var y) e1))
+alphaEq _ _ = False
+
+
+
+reduceOnce :: Expr -> Maybe Expr
+reduceOnce (Var x) = Nothing
+reduceOnce ((Lam x xs) :@ g) = Just $ subst x g xs
+
+reduceOnce (Lam x xs) | reduceOnce xs == Nothing = Nothing
+                      | otherwise = do
+                        ys <- reduceOnce xs
+                        return $ Lam x ys
+reduceOnce (l :@ r) | reduceOnce l == Nothing && reduceOnce r == Nothing = Nothing
+                    | reduceOnce l == Nothing = Just $ l :@ (fromJust $ reduceOnce r)
+                    | otherwise = Just $ (fromJust $ reduceOnce l) :@ r
+
+
+nf :: Expr -> Expr 
+nf ex | reduceOnce ex == Nothing = ex
+      | otherwise = nf $ fromJust (reduceOnce ex)
+
+infix 1 `betaEq`
+betaEq :: Expr -> Expr -> Bool 
+betaEq l r = (nf l) `alphaEq` (nf r)
